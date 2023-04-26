@@ -1,29 +1,111 @@
 ---
-title: "Welcome to Jekyll!"
-date: 2019-04-18T15:34:30-04:00
+title: "Puppeteer로 PDF 생성 시 빈 화면 문제 해결하기"
+date: 2023-04-22 17:13:16 +0900
 categories:
   - blog
 tags:
-  - Jekyll
-  - update
+  - puppeteer
+ 
 ---
+현업에서 `_Puppeteer`를 활용하여 웹페이지를 PDF로 변환하고 스크린샷으로 사용자에게 화면을 제공하고 있다.
+오늘은 Pupetteer를 활용하면서 발생했던 이슈와 해결방법에 대한 회고록을 작성해보려고 한다.
 
-You'll find this post in your `_posts` directory. Go ahead and edit it and re-build the site to see your changes. You can rebuild the site in many different ways, but the most common way is to run `jekyll serve`, which launches a web server and auto-regenerates your site when a file is updated.
+## 현상 발생
+간략하게 정책을 작성하자면 아래와 같은 프로세스를 통해 PDF 생성이 이루어지고 있다.
+1. 문서가 최종 완료되면 사용자에게 문서 화면을 제공
+2. 고정된 HTML 템플릿에 결재 정보를 로드
+3. 로드가 완료되면 Puppeteer를 사용하여 PDF 생성
 
-To add new posts, simply add a file in the `_posts` directory that follows the convention `YYYY-MM-DD-name-of-post.ext` and includes the necessary front matter. Take a look at the source for this post to get an idea about how it works.
 
-Jekyll also offers powerful support for code snippets:
+그러나 빈 화면의 템플릿이 포함된 PDF가 빈번하게 생성되어 사용자들로부터 여러 차례 문의가 접수되었다.
 
-```ruby
-def print_hi(name)
-  puts "Hi, #{name}"
-end
-print_hi('Tom')
-#=> prints 'Hi, Tom' to STDOUT.
+
+## 문제 원인
+최초에는 Puppeteer의 PDF 생성 타이밍이 맞지 않아 빈 화면으로 출력되는 것으로 파악하였다.
+따라서 Puppeteer의 옵션을 변경하기로 결정하였지만 쉽게 해결되지 않았다.
+
+원인은 문서의 양이 증가함에 따라 정보 조회의 로딩 속도가 느려지고 로딩 타이밍이 지연되는 현상으로 확인되었고
+쿼리 튜닝을 통한 근본적인 해결 방안이 필요하지만 임시 조치로 Puppeteer 쪽 코드를 수정하여 문제를 해결하기로 하였다.
+
+
+## 해결 방법
+
+### 1. 'waitUntil' 옵션 변경 (실패)
+기존 `page.goto()` 함수의 `waitUntil` 옵션은 `networkidle2`로 적용 되어 있었다.
+- networkidle2 : consider navigation to be finished when there are no more than 2 network connections for at least 500 ms.
+(네트워크 연결이 0.5초 동안 2개 이하로 유지될 때까지 대기)
+
+```javascript
+  await page.goto(url, { waitUntil: 'networkidle2' });
 ```
 
-Check out the [Jekyll docs][jekyll-docs] for more info on how to get the most out of Jekyll. File all bugs/feature requests at [Jekyll’s GitHub repo][jekyll-gh]. If you have questions, you can ask them on [Jekyll Talk][jekyll-talk].
+`domcontentloaded` 옵션으로 변경해보았다.
+- domcontentloaded : consider navigation to be finished when the DOMContentLoaded event is fired.
+(DOM ContentLoaded 이벤트가 발생할 때 HTML 문서가 완전히 로드된 것으로 간주)
 
-[jekyll-docs]: https://jekyllrb.com/docs/home
-[jekyll-gh]:   https://github.com/jekyll/jekyll
-[jekyll-talk]: https://talk.jekyllrb.com/
+```javascript
+  await page.goto(url, { waitUntil: 'domcontentloaded' });
+```
+
+### 2. 특정 Dom이 로드될 때 PDF 생성 (실패)
+특정 클래스 내 값이 생성 될 때 PDF가 생성되도록 변경하였다.
+
+
+```javascript
+  await page.waitForFunction(() => {
+  const element = document.querySelector(".example-class");
+  return element && element.textContent.trim() !== "";
+});
+```
+
+### 3. 브라우저의 스크롤이 생기면 PDF 생성 (성공)
+
+템플릿의 빈 화면에서 정보가 입력되면 일반적으로 웹 브라우저 내에 스크롤이 생성되는 것을 확인하여
+스크롤이 생기는 타이밍에 PDF가 생성되록 변경하였다.
+
+```javascript
+  const hasScrollbar = async () => {
+  return await page.evaluate(() => {
+    return document.documentElement.scrollHeight > document.documentElement.clientHeight;
+  });
+};
+```
+
+문서의 길이가 짧아 스크롤이 없는 경우를 고려하여 스크롤 생성 여부를 20초 동안만 체크하도록 변경.
+
+```javascript
+
+  // 스크롤 존재 여부 체크 Function
+  const hasScrollbar = async () => {
+    return await page.evaluate(() => {
+      return document.documentElement.scrollHeight > document.documentElement.clientHeight;
+    });
+  };
+
+  // 최대 10초동안 스크롤 여부를 확인 (스크롤이 생기거나 10초가 경과하면 함수 종료)
+  const checkScrollbarWithTimeout = async (timeout) => {
+    const startTime = new Date();
+    while (!(await hasScrollbar())) {
+      const currentTime = new Date();
+      if (currentTime - startTime >= timeout) {
+        break;
+      }
+      await page.waitForTimeout(100); // 100ms 대기
+    }
+  };
+
+await checkScrollbarWithTimeout(10000); 
+```
+
+
+## 아쉬웠던 점
+사실상 timeout을 사용하여 해결한 것은 불필요한 메모리 사용을 야기할 수 있는 문제였기 때문에 완벽한 해결책은 아니었다.
+스크롤로 체크하는 방법도 모든 문서의 형태를 확인할 수 없어 확실한 방법은 아니었고...
+
+쿼리 튜닝을 통해 문서 정보 로드 시간을 단축시킬 계획이지만,
+2번 방법처럼 확실한 DOM 생성을 판별하는 기준이 있다면 보다 정확한 체크가 가능할 것이라고 생각 된다.
+
+기회가 된다면 Puppeteer를 playwright로 교체하는 작업을 해보고 싶다.
+
+
+
