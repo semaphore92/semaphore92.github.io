@@ -9,6 +9,11 @@ tags:
 ---
 
 
+```
+java -jar -javaagent:/service/apm/pinpoint-agent-2.4.2/pinpoint-bootstrap-2.4.2.jar -Dpinpoint.applicationName=dev -Dpinpoint.config=/service/apm/pinpoint-agent-2.4.2/pinpoint-root.config -Dspring.profiles.active=dev /service/app.jar
+```
+
+
 ## Ansible 사용해보는 이유
 
 친구는 서버를 50개가량 관리하는데 일일히 제어가 너무 힘들어서 Ansible을 도입하였다고 들었고 아주 만족한다고 전달받았다.
