@@ -59,15 +59,12 @@ plugins:
 
 author:
   name   : "Semaphore"
-  avatar : "/assets/images/bio-photo.jpg"
-  bio    : "Just do it"
+  avatar : "/assets/images/profile.png"
+  bio    : "검이블루 화이불치"
   links:
     - label: "GitHub"
       icon: "fab fa-fw fa-github"
       url: "https://github.com/semaphore92"
-    - label: "Instagram"
-      icon: "fab fa-fw fa-instagram"
-      url: "https://instagram.com/semaphore__/"
 
 footer:
   links:
