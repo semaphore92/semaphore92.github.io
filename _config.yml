@@ -60,7 +60,7 @@ plugins:
 author:
   name   : "Semaphore"
   avatar : "/assets/images/profile.png"
-  bio    : "검이블루 화이불치"
+  bio    : "검이불루 화이불치"
   links:
     - label: "GitHub"
       icon: "fab fa-fw fa-github"
